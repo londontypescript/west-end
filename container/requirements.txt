@@ -1,0 +1,24 @@
+# gdtoolkit (gdlint, gdformat) and every one of its dependencies, at exact
+# versions, each with the hash of the one wheel pip selects on CPython 3.11,
+# Linux aarch64. Installed with --require-hashes --only-binary=:all:, so pip
+# refuses anything unlisted, any other file and any source build.
+gdtoolkit==4.5.0 \
+    --hash=sha256:f25c5bf7f7fe861e1127164c5d73e0a7fb204ec74cf05d375b76a5dcf8610cdb
+lark==1.2.2 \
+    --hash=sha256:c2276486b02f0f1b90be155f2c8ba4a8e194d42775786db622faccd652d8e80c
+regex==2026.9.29 \
+    --hash=sha256:7020ed44df30b3aa492c00ee3b52d0548c1f30c2c6c5bb13ae897680900d3413
+docopt-ng==0.9.0 \
+    --hash=sha256:bfe4c8b03f9fca424c24ee0b4ffa84bf7391cb18c29ce0f6a8227a3b01b81ff9
+pyyaml==6.0.3 \
+    --hash=sha256:10892704fc220243f5305762e276552a0395f7beb4dbf9b14ec8fd43b57f126c
+radon==6.0.1 \
+    --hash=sha256:632cc032364a6f8bb1010a2f6a12d0f14bc7e5ede76585ef29dc0cecf4cd8859
+mando==0.7.1 \
+    --hash=sha256:26ef1d70928b6057ee3ca12583d73c63e05c49de8972d620c278a7b206581a8a
+six==1.17.0 \
+    --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274
+colorama==0.4.6 \
+    --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
+setuptools==84.2.1 \
+    --hash=sha256:ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2
