@@ -13,9 +13,8 @@ face.
 
 ## Decision
 
-The test puppet is Nnsée, rather than a new character. It is the only thing
-that comes across from the owner's private productions, and it is scrubbed
-by hand with the owner before its first push. Nnsée's artwork, rig and
+The test puppet is Nnsée, rather than a new character. The owner reviews
+its artwork before it is added, like every asset. Nnsée's artwork, rig and
 likeness are not covered by the code's MIT licence:
 [PROVENANCE.md](../../PROVENANCE.md) gives the terms.
 
