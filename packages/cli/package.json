@@ -1,0 +1,20 @@
+{
+  "name": "@londontypescript/west-end",
+  "private": true,
+  "version": "0.0.0",
+  "description": "west-end's command-line tool: convert, render and publish.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "west-end": "./src/bin.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc",
+    "lint": "eslint .",
+    "format:check": "prettier --check .",
+    "test": "vitest run"
+  }
+}

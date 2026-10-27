@@ -16,7 +16,9 @@
     "allowJs": true,
     "checkJs": true,
     "skipLibCheck": true,
-    "noEmit": true
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true
   },
-  "include": ["*.js"]
+  "include": ["*.js", "packages/**/*.ts", "test/**/*.ts", "scripts/**/*.ts"]
 }
