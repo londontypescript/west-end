@@ -3,6 +3,12 @@
 These rules bind every agent and person working in this repo. This
 project's own rules go here, outside temple-bar's block below.
 
+## Assets
+
+- **Assets.** Only original artwork recorded in
+  [PROVENANCE.md](PROVENANCE.md), each reviewed by the owner before it's
+  pushed. `test/privacy.test.ts` refuses audio, photos and unlisted images.
+
 <!-- BEGIN:temple-bar: setup rewrites this block; edit outside it -->
 
 ## Start here
