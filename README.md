@@ -14,4 +14,7 @@ London's theatreland: where shows are staged.
 
 ## Licence
 
-[MIT](LICENSE)
+Code is [MIT](LICENSE). The Nnsée character (its artwork, rig and likeness)
+is excluded: all rights reserved, except official London TypeScript
+branding use. [PROVENANCE.md](PROVENANCE.md) records each asset and its
+licence.
