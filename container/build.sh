@@ -37,10 +37,14 @@ here=$(cd "$(dirname "$0")" && pwd)
 pins="$here/pins.env"
 [ -f "$pins" ] || fail "$pins not found"
 
-keys="BASE_IMAGE SNAPSHOT_DEBIAN SNAPSHOT_DEBIAN_SECURITY
-INRELEASE_BOOKWORM_SHA256 INRELEASE_BOOKWORM_UPDATES_SHA256
-INRELEASE_BOOKWORM_SECURITY_SHA256 GODOT_VERSION GODOT_URL GODOT_ZIP
-GODOT_ZIP_SHA512 GODOT_BINARY_SHA512 NODE_VERSION NODE_URL NODE_SHA256
+# Every pin, separated by single spaces (the backslashes join the lines).
+# Globbing is off for the rest of the script, so the constant list can be
+# split into words safely.
+set -f
+keys="BASE_IMAGE SNAPSHOT_DEBIAN SNAPSHOT_DEBIAN_SECURITY \
+INRELEASE_BOOKWORM_SHA256 INRELEASE_BOOKWORM_UPDATES_SHA256 \
+INRELEASE_BOOKWORM_SECURITY_SHA256 GODOT_VERSION GODOT_URL GODOT_ZIP \
+GODOT_ZIP_SHA512 GODOT_BINARY_SHA512 NODE_VERSION NODE_URL NODE_SHA256 \
 GDUNIT4_TAG GDUNIT4_COMMIT GDUNIT4_URL GDUNIT4_SHA256"
 
 hex() {
@@ -68,8 +72,10 @@ valid() {
   esac
 }
 
+# The build arguments are collected as positional parameters, one word
+# each, so no value is ever split or re-read by the shell.
+set --
 seen=" "
-build_args=
 line_number=0
 while IFS= read -r line || [ -n "$line" ]; do
   line_number=$((line_number + 1))
@@ -79,7 +85,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   key=${line%%=*}
   value=${line#*=}
   [ "$key" != "$line" ] || fail "pins.env line $line_number has no '='"
-  case " $(echo $keys) " in
+  case " $keys " in
     *" $key "*) ;;
     *) fail "pins.env line $line_number: unknown pin '$key'" ;;
   esac
@@ -89,7 +95,7 @@ while IFS= read -r line || [ -n "$line" ]; do
   valid "$key" "$value" || fail "pins.env line $line_number: $key has a malformed value"
   seen="$seen$key "
   eval "pin_$key=\$value"
-  build_args="$build_args --build-arg $key=$value"
+  set -- "$@" --build-arg "$key=$value"
 done < "$pins"
 
 for key in $keys; do
@@ -118,18 +124,16 @@ case $pin_GDUNIT4_URL in
   *) fail "GDUNIT4_URL is not the source archive of GDUNIT4_TAG" ;;
 esac
 
-# Values were checked above to hold no spaces or shell characters, so the
-# argument list can be split on spaces; globbing stays off regardless.
-set -f
+if [ -n "$no_cache" ]; then
+  set -- --no-cache "$@"
+fi
 case $tool in
   apple)
-    # shellcheck disable=SC2086
     exec container build --platform linux/arm64 --file "$here/Containerfile" \
-      --tag "$tag" $no_cache $build_args "$here"
+      --tag "$tag" "$@" "$here"
     ;;
   docker)
-    # shellcheck disable=SC2086
     exec docker build --platform linux/arm64 --file "$here/Containerfile" \
-      --tag "$tag" $no_cache $build_args "$here"
+      --tag "$tag" "$@" "$here"
     ;;
 esac

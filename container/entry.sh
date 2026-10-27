@@ -16,10 +16,18 @@ if [ "$(id -u)" = 0 ]; then
   exit 2
 fi
 
+# The private folders are the user's alone, set explicitly rather than
+# through the umask.
 job=/tmp/job
-umask 077
-mkdir -p "$job/home" "$job/config" "$job/cache" "$job/data" "$job/state" \
-  "$job/runtime" "$job/work"
+for dir in "$job" "$job/home" "$job/config" "$job/cache" "$job/data" \
+  "$job/state" "$job/runtime" "$job/work"; do
+  mkdir -p "$dir"
+  chmod 0700 "$dir"
+done
+
+# What the step writes to the job folder mount must be readable by the
+# host user who collects it, so the step itself runs with umask 022.
+umask 022
 
 export HOME="$job/home"
 export XDG_CONFIG_HOME="$job/config"

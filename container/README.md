@@ -71,11 +71,19 @@ Both policies:
   self-contained code (pure JavaScript or a bundled worker).
 - Root filesystem read-only (`--read-only`) with a tmpfs at `/tmp`.
   [`entry.sh`](entry.sh) creates `HOME` and the `XDG_*` folders (and with
-  them Godot's and gdtoolkit's caches) under `/tmp/job`, then `exec`s the
-  step, so it receives the caller's signals directly.
-- CPU, memory and time limits set by the caller. On timeout the caller
-  stops the whole container (`container stop <name>` or
-  `docker kill <name>`), never just the client process. A time limit is
+  them Godot's and gdtoolkit's caches) under `/tmp/job`, each mode 0700,
+  then `exec`s the step with umask 022, so it receives the caller's signals
+  directly and what it writes to the job folder is readable by the host
+  user. Under Docker on Linux those files belong to UID 10001; the caller
+  may need `sudo chown -R "$(id -u):$(id -g)" "$job"` before handling them.
+- CPU, memory and time limits set by the caller. On timeout or interrupt
+  the caller kills and removes the whole container (`container kill` then
+  `container delete --force`, or `docker kill` then `docker rm --force`),
+  never just the client process, and confirms it is gone. The step runs as
+  PID 1, which ignores SIGTERM, so a polite stop only waits out its grace
+  period. [`smoke/run.sh`](smoke/run.sh) does this from a watchdog and
+  from `EXIT`, `INT` and `TERM` traps, retrying for up to a minute while
+  the client may still be creating the container. A time limit is
   not optional: Godot that can't start its renderer opens an alert dialog
   under Xvfb and waits for a click forever (seen with Mesa's drivers
   missing), so the smoke checks also wrap each engine and browser run in
@@ -144,23 +152,42 @@ container/smoke/run.sh apple west-end:<tag> gl       # one check
   background.
 - `check`: `godot --headless --check-only` parses the project's script.
 - `gdtoolkit`: `gdlint` and `gdformat --check` accept that script.
-- `gdunit`: one gdUnit4 test, run headless, writes a JUnit report with one
-  passing test.
+- `gdunit`: one gdUnit4 test, run headless, writes a JUnit report.
+  [`smoke/junit.py`](smoke/junit.py) parses it and requires exactly one
+  suite with exactly one test case that ran and passed, and totals of one
+  test, no failures, no errors and no skips.
 - `chromium`: headless Chromium, as UID 10001 with its sandbox on (no
   `--no-sandbox`, no `--disable-setuid-sandbox`, no extra privileges),
   renders a one-rectangle SVG to a PNG that shows the rectangle. It then
-  starts Chromium again and inspects each live renderer in `/proc`: every
-  one must run under a seccomp-bpf filter (`Seccomp: 2`) in a user
-  namespace of its own. Under Apple `container` 1.5.0 Chromium uses its
-  user-namespace sandbox. Docker's default seccomp profile may refuse
-  unprivileged user namespaces, in which case Chromium falls back to the
-  setuid `chrome-sandbox` helper; CI (phase I) runs the same check there.
+  starts Chromium again, inspects each live renderer in `/proc`, names the
+  sandbox it is under, and fails if neither holds:
+  - both kinds: the renderer is in seccomp mode 2 with more seccomp filters
+    (`Seccomp_filters`) than the checking shell, so Chromium's own
+    seccomp-bpf filter is loaded. A container runtime's filter, such as
+    Docker's default profile, sits on both processes and so can't pass for
+    it;
+  - namespace sandbox: the renderer is in a user namespace of its own;
+  - setuid sandbox: the renderer shares the shell's user namespace but has
+    PID and network namespaces of its own, and descends from the
+    `chrome-sandbox` helper.
+
+  Under Apple `container` 1.5.0 the result is the namespace sandbox. The
+  setuid helper can't work there: its attempt to make PID and network
+  namespaces fails with `Operation not permitted`, so that branch is first
+  exercised in CI. Under Docker the expected result is the namespace
+  sandbox if the runtime allows unprivileged user namespaces, otherwise the
+  setuid sandbox if the helper may create namespaces. With Docker's
+  default seccomp profile and capabilities, neither may be possible, and
+  the check then fails rather than passing on Docker's own filter.
 
 Each Godot and Chromium run has its own time limit, `SMOKE_STEP_LIMIT`
-seconds (default 120), and the whole run `SMOKE_TIME_LIMIT` (default 600).
-`SMOKE_RENDERING_DRIVER` replaces `opengl3` in the `gl` check, only to show
-that check failing. Logs and outputs stay in the job folder the script
-prints at the end.
+seconds (default 120), and the whole run `SMOKE_TIME_LIMIT` (a positive
+whole number, default 600). The sandbox probe stops Chromium with SIGTERM,
+then SIGKILL after a short grace, and fails if any Chromium process
+outlives both. `SMOKE_RENDERING_DRIVER` (letters, digits and `_` only)
+replaces `opengl3` in the `gl` check, only to show that check failing.
+`run.sh` accepts only the known step names. Logs and outputs stay in the
+job folder the script prints at the end.
 
 ## Refreshing the pins
 

@@ -161,11 +161,7 @@ step_gdunit() {
   cp -R "$work/reports" "$out/gdunit"
   report=$(find "$out/gdunit" -name results.xml | head -n 1)
   [ -n "$report" ] || fail "gdunit: no JUnit report written"
-  summary=$(grep -o -m 1 '<testsuites [^>]*>' "$report")
-  case $summary in
-    *'tests="1"'*'failures="0"'*) ;;
-    *) fail "gdunit: report does not show one passing test: $summary" ;;
-  esac
+  summary=$(python3 -I /repo/container/smoke/junit.py "$report") || exit 1
   pass "gdunit: ${report#"$out/"}: $summary"
 }
 
@@ -189,45 +185,134 @@ step_chromium() {
   sandbox_proof
 }
 
-# Prints the PIDs of running Chromium processes of one --type.
-chromium_pids() {
+# A process's first argument, or nothing if it has gone.
+argv0() {
+  { tr '\0' '\n' < "/proc/$1/cmdline"; } 2> /dev/null | head -n 1
+}
+
+# Prints the PIDs of running Chromium renderers.
+renderer_pids() {
   for dir in /proc/[0-9]*; do
-    tr '\0' ' ' < "$dir/cmdline" 2> /dev/null | grep -q -e "--type=$1 " &&
+    { tr '\0' ' ' < "$dir/cmdline"; } 2> /dev/null | grep -q -e "--type=renderer " &&
       echo "${dir#/proc/}"
   done
   return 0
 }
 
-# Starting is not proof enough: look at a live renderer. Each must run under
-# a seccomp-bpf filter (mode 2) and in a user namespace of its own, which is
-# what Chromium's sandbox sets up.
+# Prints the PIDs of every process run from Chromium's own folder.
+chromium_processes() {
+  for dir in /proc/[0-9]*; do
+    case $(argv0 "${dir#/proc/}") in
+      /usr/lib/chromium/*) echo "${dir#/proc/}" ;;
+    esac
+  done
+  return 0
+}
+
+status_field() {
+  sed -n "s/^$2:[[:space:]]*//p" "/proc/$1/status" 2> /dev/null
+}
+
+# Whether a process descends from Chromium's setuid sandbox helper, which
+# stays as the parent of the zygote it moved into new namespaces.
+under_setuid_helper() {
+  pid=$1
+  hops=0
+  while [ "$pid" -gt 1 ] && [ "$hops" -lt 10 ]; do
+    pid=$(status_field "$pid" PPid)
+    [ -n "$pid" ] || return 1
+    case $(argv0 "$pid") in
+      */chrome-sandbox) return 0 ;;
+    esac
+    hops=$((hops + 1))
+  done
+  return 1
+}
+
+# Names the sandbox a renderer is under, or explains why neither holds.
+# Both kinds load Chromium's own seccomp-bpf filter, so the renderer must
+# carry more filters than this shell (a container runtime's filter, such as
+# Docker's, is on both). Then either:
+#   namespace sandbox: the renderer is in a user namespace of its own;
+#   setuid sandbox: chrome-sandbox launched it, into PID and network
+#   namespaces of its own, still in this user namespace.
+sandbox_of() {
+  pid=$1
+  seccomp=$(status_field "$pid" Seccomp)
+  filters=$(status_field "$pid" Seccomp_filters)
+  own_filters=$(status_field self Seccomp_filters)
+  [ -n "$filters" ] && [ -n "$own_filters" ] || {
+    echo "none: this kernel does not report Seccomp_filters"
+    return
+  }
+  if [ "$seccomp" != 2 ] || [ "$filters" -le "$own_filters" ]; then
+    echo "none: renderer $pid has seccomp mode '$seccomp' with $filters filters (this shell has $own_filters)"
+    return
+  fi
+  for kind in user pid net; do
+    eval "same_$kind=no"
+    [ "$(readlink "/proc/$pid/ns/$kind")" != "$(readlink "/proc/self/ns/$kind")" ] ||
+      eval "same_$kind=yes"
+  done
+  # shellcheck disable=SC2154 # set by the eval above
+  if [ "$same_user" = no ]; then
+    echo namespace
+  elif [ "$same_pid" = no ] && [ "$same_net" = no ] && under_setuid_helper "$pid"; then
+    echo setuid
+  else
+    echo "none: renderer $pid shares this shell's user namespace and is not isolated by chrome-sandbox"
+  fi
+}
+
+# Stops every Chromium process: SIGTERM, a short grace period, then SIGKILL,
+# and a bounded wait for them to go.
+stop_chromium() {
+  for pid in $(chromium_processes) "$1"; do
+    kill -TERM "$pid" 2> /dev/null || true
+  done
+  for signal in KILL none; do
+    tries=0
+    while [ -n "$(chromium_processes)" ] && [ "$tries" -lt 10 ]; do
+      sleep 0.5
+      tries=$((tries + 1))
+    done
+    [ -n "$(chromium_processes)" ] || break
+    [ "$signal" = none ] && fail "chromium: processes still running after SIGKILL: $(echo $(chromium_processes))"
+    for pid in $(chromium_processes) "$1"; do
+      kill -KILL "$pid" 2> /dev/null || true
+    done
+  done
+  wait "$1" 2> /dev/null || true
+}
+
+# Starting is not proof enough: look at live renderers and require each to
+# be under one of Chromium's two sandboxes.
 sandbox_proof() {
   chromium --headless --user-data-dir=/tmp/job/chromium-probe --no-first-run \
     --remote-debugging-port=0 about:blank > "$out/chromium-sandbox.log" 2>&1 &
+  browser=$!
   renderers=
   tries=0
   while [ -z "$renderers" ] && [ "$tries" -lt 40 ]; do
     sleep 0.5
-    renderers=$(chromium_pids renderer)
+    renderers=$(renderer_pids)
     tries=$((tries + 1))
   done
-  own_namespace=$(readlink /proc/self/ns/user)
+  kinds=
   verdict=ok
-  for pid in $renderers; do
-    seccomp=$(sed -n 's/^Seccomp:[[:space:]]*//p' "/proc/$pid/status")
-    namespace=$(readlink "/proc/$pid/ns/user")
-    [ "$seccomp" = 2 ] && [ "$namespace" != "$own_namespace" ] ||
-      verdict="renderer $pid has seccomp mode '$seccomp' in $namespace"
+  for renderer in $renderers; do
+    kind=$(sandbox_of "$renderer")
+    case $kind in
+      namespace | setuid) kinds="$kinds $kind" ;;
+      *) verdict=$kind ;;
+    esac
   done
-  for pid in $(chromium_pids zygote) $(chromium_pids renderer) \
-    $(chromium_pids gpu-process) $(chromium_pids utility) "$!"; do
-    kill "$pid" 2> /dev/null || true
-  done
-  wait 2> /dev/null || true
+  stop_chromium "$browser"
   [ -n "$renderers" ] || fail "chromium: no renderer process appeared"
   [ "$verdict" = ok ] || fail "chromium: sandbox not in force: $verdict"
-  pass "chromium: sandbox in force, renderers $(echo $renderers) under" \
-    "seccomp-bpf in their own user namespace, as UID $(id -u)"
+  kind=$(echo $kinds | tr ' ' '\n' | sort -u | tr '\n' ' ')
+  pass "chromium: ${kind}sandbox in force for renderers $(echo $renderers):" \
+    "Chromium's seccomp-bpf filter loaded, as UID $(id -u)"
 }
 
 for step in $steps; do
