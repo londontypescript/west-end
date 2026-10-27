@@ -1,0 +1,17 @@
+*.log
+.DS_Store
+
+# Added by temple-bar
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.tgz
+.env
+.env.*
+!*.example
+Thumbs.db
+.claude/settings.local.json
+CLAUDE.local.md
+.claude/worktrees/
+.temple-bar/
