@@ -3,6 +3,175 @@
 One Linux arm64 image that every Godot and Chromium step runs in, built from
 the same pinned inputs under Apple `container` locally and Docker in CI.
 
+## Building
+
+Always through the wrapper, which reads and checks [`pins.env`](pins.env)
+and passes every pin as an explicit `--build-arg` with
+`--platform linux/arm64`:
+
+```sh
+container/build.sh apple west-end:<tag>             # Apple container
+container/build.sh docker west-end:<tag>            # Docker
+container/build.sh apple west-end:<tag> --no-cache  # every step again
+```
+
+It stops before building on a missing, unknown, repeated or malformed pin,
+or on pins that disagree (a Godot URL that isn't the named ZIP, for
+example). `--no-cache` is the only extra option it accepts, so a pin can't
+be overridden from the command line. The [`Containerfile`](Containerfile)
+gives no argument a default, so building it directly fails instead of
+guessing.
+
+Built and checked locally with Apple `container` 1.5.0 on an arm64 Mac.
+Docker build parity is checked in CI (phase I); Docker isn't installed
+locally. The image is Linux arm64 only: an amd64 build stops at the first
+step with `architecture is amd64, expected arm64`.
+
+## What is in the image
+
+| Path                            | What                                                     |
+| ------------------------------- | -------------------------------------------------------- |
+| `/opt/godot/godot`              | Godot, also on `PATH` as `godot`                         |
+| `/opt/node`                     | Node; only `node` is on `PATH`                           |
+| `/opt/gdtoolkit`                | venv with `gdlint` and `gdformat`, both on `PATH`        |
+| `/opt/gdunit4/addons/gdUnit4`   | the gdUnit4 add-on, for a project to copy                |
+| `/opt/west-end/packages.txt`    | every installed Debian package, version and architecture |
+| `/opt/west-end/python.txt`      | every Python package in the venv                         |
+| `/opt/west-end/pins.txt`        | the pins the image was built from                        |
+| `/opt/west-end/steps/`          | the build steps that ran                                 |
+| `/usr/local/bin/west-end-entry` | the entry command ([`entry.sh`](entry.sh))               |
+
+Debian packages come only from the snapshot (see below), with xvfb, Mesa
+(llvmpipe), the X libraries Godot needs, ffmpeg, Chromium and its setuid
+sandbox helper, Python and fonts. `LIBGL_ALWAYS_SOFTWARE=1` and
+`GALLIUM_DRIVER=llvmpipe` are set, so rendering never touches a host GPU.
+
+The build fails if any of these hold: the architecture isn't arm64; a
+snapshot `InRelease` differs from its pinned hash; apt has an index from
+anywhere but the two snapshot URLs; an installed package is one the
+snapshot doesn't serve (for example newer than it) or is older than the
+snapshot's; `chrome-sandbox` isn't setuid root; the Godot ZIP, the Godot
+binary, the Node tarball or the gdUnit4 archive doesn't match its hash; the
+gdUnit4 archive wasn't made from the pinned commit; pip meets a file
+without a listed hash, or would need to build from source.
+
+## Running steps: the contract
+
+The TypeScript CLI runs on the host for everything that needs no engine.
+Steps that need Godot or Chromium run in this image, one container per
+step, under one of two policies.
+
+Both policies:
+
+- `--network none`.
+- Run as the image's user, `--user 10001:10001`. The entry command refuses
+  root.
+- Nothing from the host's home: no credentials, no SSH agent (never
+  `--ssh`), no host `node_modules`. Node in the image runs only
+  self-contained code (pure JavaScript or a bundled worker).
+- Root filesystem read-only (`--read-only`) with a tmpfs at `/tmp`.
+  [`entry.sh`](entry.sh) creates `HOME` and the `XDG_*` folders (and with
+  them Godot's and gdtoolkit's caches) under `/tmp/job`, then `exec`s the
+  step, so it receives the caller's signals directly.
+- CPU, memory and time limits set by the caller. On timeout the caller
+  stops the whole container (`container stop <name>` or
+  `docker kill <name>`), never just the client process. A time limit is
+  not optional: Godot that can't start its renderer opens an alert dialog
+  under Xvfb and waits for a click forever (seen with Mesa's drivers
+  missing), so the smoke checks also wrap each engine and browser run in
+  `timeout`.
+- `--rm`: the container is removed after the run.
+- Shared memory for Chromium: `--shm-size 1G` on both tools. Debian's
+  Chromium wrapper (`/etc/chromium.d/dev-shm`) adds
+  `--disable-dev-shm-usage` whenever `/dev/shm` is under 3.8 GB, so
+  Chromium then keeps that memory in the `/tmp` tmpfs instead; this changes
+  where shared memory lives, not the sandbox.
+
+**Render/check policy** (Godot renders, checks, tests): the repository's
+needed folders mounted read-only, never including `node_modules`; one
+writable job folder for output. Godot runs on a copy of the project in
+`/tmp/job/work`, so its import cache never lands in a mount.
+
+**Convert policy** (hostile input, such as an SVG from outside): no
+repository mount at all. Only the staged input file, copied by the caller
+into the job folder; the CLI's runtime mounted read-only; output bounded in
+size; a process limit. Docker has `--pids-limit`. Apple `container` 1.5.0
+has no PID limit: the nearest is `--ulimit nproc=<n>`, a per-user process
+limit, which bounds the step's user only. That gap is real and is
+documented rather than faked; the hostile-SVG policy itself is phase E's.
+
+The caller creates the job folder and makes it writable by UID 10001:
+
+```sh
+# Apple container on macOS: UID 10001 has no host account.
+job=$(mktemp -d) && chmod 0777 "$job"
+# Docker on Linux: give it to UID 10001 alone.
+job=$(mktemp -d) && sudo chown 10001:10001 "$job" && chmod 0700 "$job"
+```
+
+A render/check run with Apple `container`, as
+[`smoke/run.sh`](smoke/run.sh) does it:
+
+```sh
+container run --rm --name <job> --network none \
+  --read-only --tmpfs /tmp --shm-size 1G \
+  --cpus 4 --memory 4G --ulimit nproc=2048 --user 10001:10001 \
+  --mount type=bind,source=<repo>/container,target=/repo/container,readonly \
+  --volume "$job:/out" \
+  west-end:<tag> <command> [argument...]
+```
+
+With Docker the same run uses `--tmpfs /tmp:size=2g --pids-limit 2048` in
+place of the `--tmpfs` and `--ulimit` options.
+
+## Smoke checks
+
+[`smoke/run.sh`](smoke/run.sh) runs [`smoke/smoke.sh`](smoke/smoke.sh) in the
+image under the render/check policy against the throwaway project in
+[`smoke/project`](smoke/project):
+
+```sh
+container/smoke/run.sh apple west-end:<tag>          # every check
+container/smoke/run.sh apple west-end:<tag> gl       # one check
+```
+
+- `versions`: Godot, Node and gdtoolkit match the pins; Chromium matches
+  its Debian package; ffmpeg runs.
+- `gl`: a graphical run, not `--headless`, under `xvfb-run` with the X11
+  display driver, the Compatibility renderer on OpenGL 3 and llvmpipe. The
+  log must name llvmpipe as the OpenGL renderer, and a frame written with
+  `--write-movie` must show the scene's red rectangle on its blue
+  background.
+- `check`: `godot --headless --check-only` parses the project's script.
+- `gdtoolkit`: `gdlint` and `gdformat --check` accept that script.
+- `gdunit`: one gdUnit4 test, run headless, writes a JUnit report with one
+  passing test.
+- `chromium`: headless Chromium, as UID 10001 with its sandbox on (no
+  `--no-sandbox`, no `--disable-setuid-sandbox`, no extra privileges),
+  renders a one-rectangle SVG to a PNG that shows the rectangle. It then
+  starts Chromium again and inspects each live renderer in `/proc`: every
+  one must run under a seccomp-bpf filter (`Seccomp: 2`) in a user
+  namespace of its own. Under Apple `container` 1.5.0 Chromium uses its
+  user-namespace sandbox. Docker's default seccomp profile may refuse
+  unprivileged user namespaces, in which case Chromium falls back to the
+  setuid `chrome-sandbox` helper; CI (phase I) runs the same check there.
+
+Each Godot and Chromium run has its own time limit, `SMOKE_STEP_LIMIT`
+seconds (default 120), and the whole run `SMOKE_TIME_LIMIT` (default 600).
+`SMOKE_RENDERING_DRIVER` replaces `opengl3` in the `gl` check, only to show
+that check failing. Logs and outputs stay in the job folder the script
+prints at the end.
+
+## Refreshing the pins
+
+A frozen snapshot also freezes Chromium's security fixes, so refresh at
+least once a milestone. The snapshot timestamps, the base image digest and
+Chromium move together: take a new base digest, then snapshot timestamps no
+older than the base's archive date, then record the new `InRelease` hashes.
+For each pin, follow its source below, change its one line in `pins.env`
+(or `requirements.txt`), rebuild with `--no-cache` and run the smoke
+checks.
+
 ## Pins
 
 Every input is pinned in [`pins.env`](pins.env), except the Python wheels,
@@ -113,6 +282,10 @@ snapshot resolves for the packages that matter most (arm64): `chromium`
   wheel pip selects on CPython 3.11, Linux aarch64: pure-Python
   `py3-none-any` wheels, and `cp311` `manylinux_2_17_aarch64` wheels for
   `pyyaml` and `regex`.
+- pip itself is not pinned here: the venv's pip is Debian's 23.0.1
+  (`python3-pip-whl` `23.0.1+dfsg-1`), fixed by the snapshot, and it
+  installs every wheel above. If a future wheel needs a newer pip, pin pip
+  as one more hashed wheel installed first.
 - Known open upstream issues that may matter later:
   gdformat can indent closers after a multi-line lambda in a way Godot
   rejects (issue 424), and concurrent gdlint/gdformat runs can race on the

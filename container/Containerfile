@@ -1,0 +1,90 @@
+# The image every Godot and Chromium step runs in. Build it with
+# container/build.sh, which passes every pin from pins.env: no argument here
+# has a default, so a build that skips the wrapper fails instead of guessing.
+# Plain Dockerfile instructions only, so Apple container and Docker build it
+# the same way.
+
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# Linux arm64 only for now; an emulated or cross build stops here.
+RUN arch="$(dpkg --print-architecture)"; \
+    if [ "$arch" != arm64 ]; then \
+      echo "west-end image build: architecture is $arch, expected arm64; build with --platform linux/arm64" >&2; \
+      exit 1; \
+    fi
+
+COPY steps/common.sh /opt/west-end/steps/common.sh
+
+ARG SNAPSHOT_DEBIAN
+ARG SNAPSHOT_DEBIAN_SECURITY
+ARG INRELEASE_BOOKWORM_SHA256
+ARG INRELEASE_BOOKWORM_UPDATES_SHA256
+ARG INRELEASE_BOOKWORM_SECURITY_SHA256
+COPY steps/apt.sh /opt/west-end/steps/apt.sh
+RUN sh /opt/west-end/steps/apt.sh
+
+ARG GODOT_VERSION
+ARG GODOT_URL
+ARG GODOT_ZIP
+ARG GODOT_ZIP_SHA512
+ARG GODOT_BINARY_SHA512
+COPY steps/godot.sh /opt/west-end/steps/godot.sh
+RUN sh /opt/west-end/steps/godot.sh
+
+ARG NODE_VERSION
+ARG NODE_URL
+ARG NODE_SHA256
+COPY steps/node.sh /opt/west-end/steps/node.sh
+RUN sh /opt/west-end/steps/node.sh
+
+ARG GDUNIT4_TAG
+ARG GDUNIT4_COMMIT
+ARG GDUNIT4_URL
+ARG GDUNIT4_SHA256
+COPY steps/gdunit4.sh /opt/west-end/steps/gdunit4.sh
+RUN sh /opt/west-end/steps/gdunit4.sh
+
+COPY requirements.txt /opt/west-end/requirements.txt
+COPY steps/python.sh /opt/west-end/steps/python.sh
+RUN sh /opt/west-end/steps/python.sh
+
+# Record what the image was built from, next to packages.txt and
+# python.txt, so two builds can be compared without trusting their tags.
+ARG BASE_IMAGE
+RUN { \
+      echo "BASE_IMAGE=$BASE_IMAGE"; \
+      echo "SNAPSHOT_DEBIAN=$SNAPSHOT_DEBIAN"; \
+      echo "SNAPSHOT_DEBIAN_SECURITY=$SNAPSHOT_DEBIAN_SECURITY"; \
+      echo "INRELEASE_BOOKWORM_SHA256=$INRELEASE_BOOKWORM_SHA256"; \
+      echo "INRELEASE_BOOKWORM_UPDATES_SHA256=$INRELEASE_BOOKWORM_UPDATES_SHA256"; \
+      echo "INRELEASE_BOOKWORM_SECURITY_SHA256=$INRELEASE_BOOKWORM_SECURITY_SHA256"; \
+      echo "GODOT_VERSION=$GODOT_VERSION"; \
+      echo "GODOT_URL=$GODOT_URL"; \
+      echo "GODOT_ZIP=$GODOT_ZIP"; \
+      echo "GODOT_ZIP_SHA512=$GODOT_ZIP_SHA512"; \
+      echo "GODOT_BINARY_SHA512=$GODOT_BINARY_SHA512"; \
+      echo "NODE_VERSION=$NODE_VERSION"; \
+      echo "NODE_URL=$NODE_URL"; \
+      echo "NODE_SHA256=$NODE_SHA256"; \
+      echo "GDUNIT4_TAG=$GDUNIT4_TAG"; \
+      echo "GDUNIT4_COMMIT=$GDUNIT4_COMMIT"; \
+      echo "GDUNIT4_URL=$GDUNIT4_URL"; \
+      echo "GDUNIT4_SHA256=$GDUNIT4_SHA256"; \
+    } > /opt/west-end/pins.txt
+
+# The fixed non-root user every step runs as. Its home is created per run
+# under /tmp/job by the entry command, never baked into the image.
+RUN groupadd --gid 10001 runner && \
+    useradd --uid 10001 --gid 10001 --no-create-home \
+      --home-dir /tmp/job/home --shell /usr/sbin/nologin runner
+
+COPY entry.sh /usr/local/bin/west-end-entry
+RUN chmod 0755 /usr/local/bin/west-end-entry
+
+# Rendering is always software: Mesa's llvmpipe, never a host GPU.
+ENV LIBGL_ALWAYS_SOFTWARE=1 \
+    GALLIUM_DRIVER=llvmpipe
+
+USER 10001:10001
+ENTRYPOINT ["/usr/local/bin/west-end-entry"]
