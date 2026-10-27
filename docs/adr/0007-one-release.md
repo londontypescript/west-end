@@ -13,7 +13,7 @@ version of the addon. Releasing them separately would let them drift.
 The CLI (built) and the Godot addon ship together as one versioned npm
 package. Its `sync-addon` command copies the addon into a production's
 Godot project and records the version and a hash, and a check fails if the
-copy has changed. Publishing to npm starts at milestone 5, with the owner's
+copy has changed. Publishing to npm starts at 0.6.0, with the owner's
 yes; until then, users point at a local checkout.
 
 ## What would end it
