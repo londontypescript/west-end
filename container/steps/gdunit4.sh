@@ -11,13 +11,10 @@ work=$(mktemp -d)
 fetch "$GDUNIT4_URL" "$work/gdunit4.tar.gz"
 check_digest sha256 "$GDUNIT4_SHA256" "$work/gdunit4.tar.gz"
 
-# GitHub's source archives carry the commit they were made from as the tar
-# header's comment.
-commit=$(python3 -I -c '
-import sys, tarfile
-with tarfile.open(sys.argv[1]) as archive:
-    print(archive.pax_headers.get("comment", ""))
-' "$work/gdunit4.tar.gz")
+# GitHub's source archives carry the commit they were made from as the
+# comment in the tar's first block, a pax global header ("52 comment=<sha>").
+commit=$(gzip -dc "$work/gdunit4.tar.gz" | head -c 1024 | tr '\0' '\n' |
+  sed -n 's/^[0-9]* comment=//p')
 [ "$commit" = "$GDUNIT4_COMMIT" ] ||
   fail "gdUnit4 archive was made from commit '$commit', pinned $GDUNIT4_COMMIT"
 
