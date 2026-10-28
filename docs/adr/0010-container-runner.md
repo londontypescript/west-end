@@ -1,6 +1,6 @@
 # ADR 0010: Steps that need Godot or Chromium run in one pinned container
 
-Date: 2026-10-27. Status: accepted.
+Date: 2026-10-27. Status: accepted; partly superseded by ADR 0011, which removes Chromium and the convert run policy and adds an output size bound to the render/check policy.
 
 ## Context
 

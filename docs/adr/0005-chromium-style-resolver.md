@@ -1,6 +1,6 @@
 # ADR 0005: Chromium resolves SVG styles and is a visual reference only
 
-Date: 2026-10-27. Status: accepted.
+Date: 2026-10-27. Status: superseded by ADR 0011.
 
 ## Context
 
