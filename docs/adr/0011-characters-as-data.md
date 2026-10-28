@@ -78,8 +78,9 @@ closes.
     No third-party addon and no SVG between the two.
 - **Rigging stays as ADR 0002 says.** Joint limits are carried into the
   wire format, and the builder's parts are what Skeleton2D drives. The
-  0.1.0 work must show Skeleton2D, the limits and the fallback solver on
-  the builder's output; if it can't, that reopens ADR 0002.
+  0.1.0 work must show Skeleton2D and the limits on the builder's output,
+  and the milestone that adds IK must show the fallback solver there; if
+  either can't, that reopens ADR 0002.
 - **Chromium leaves the project.** No SVG input means no CSS to resolve.
   resvg renders reference images for checks, with no browser. Character
   files never enter the container; only the reader's checked wire JSON
