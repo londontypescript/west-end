@@ -1,6 +1,6 @@
 # ADR 0006: The converter is a TypeScript CLI
 
-Date: 2026-10-27. Status: accepted.
+Date: 2026-10-27. Status: accepted; partly superseded by ADR 0011, under which the CLI reads character files and writes SVG and JSON rather than converting SVGs.
 
 ## Context
 

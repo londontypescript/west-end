@@ -1,6 +1,6 @@
 # ADR 0001: Characters built from primitives, not imported SVGs
 
-Date: 2026-10-27. Status: accepted.
+Date: 2026-10-27. Status: superseded by ADR 0011.
 
 ## Context
 
