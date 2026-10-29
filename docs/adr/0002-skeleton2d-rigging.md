@@ -1,6 +1,6 @@
 # ADR 0002: Godot's Skeleton2D for rigging, with our own limits and fallback solver
 
-Date: 2026-10-27. Status: accepted.
+Date: 2026-10-27. Status: accepted. Since ADR 0011, a character's manifest is its character file.
 
 ## Context
 
