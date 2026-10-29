@@ -1,0 +1,7 @@
+# The only hosts a *_URL pin in pins.env may download from, one per line.
+# container/build.sh refuses any other, and test/container-pins.test.ts
+# checks pins.env against this list in the gate. The hash in each pin is
+# the real guard; this list makes a pin that moves to a new host stand out
+# in review. Keep it to the hosts the pins use now.
+github.com
+nodejs.org
