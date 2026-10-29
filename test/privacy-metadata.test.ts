@@ -77,6 +77,11 @@ describe('metadata in JPEG', () => {
     expect(findings('art/cut.jpg', cut)).toEqual(metadata('carries metadata (a truncated JPEG segment); strip it'));
   });
 
+  it('refuses a scan header cut off before its length runs out', () => {
+    const cut = bytesOf([...jpeg(app0)].slice(0, -6), [0xff, 0xda, 0x00, 0x0c, 0x01]);
+    expect(findings('art/cut.jpg', cut)).toEqual(metadata('carries metadata (a truncated JPEG segment); strip it'));
+  });
+
   it('stops at the image data, where FF bytes are not markers', () => {
     const data = bytesOf([...jpeg(app0)].slice(0, -2), [0xff, 0x00, 0xfe, 0x12], [0xff, 0xd9]);
     expect(findings('art/data.jpg', data)).toEqual([]);
@@ -105,6 +110,11 @@ describe('metadata in SVG', () => {
   it.each([
     ['a comment', '<svg><!-- drawn at 12 Baker St --><circle r="5" /></svg>', 'an XML comment'],
     ['a <metadata> element', '<svg><metadata><rdf:RDF /></metadata></svg>', 'a <metadata> element'],
+    [
+      'a <metadata> element under a non-ASCII prefix',
+      '<é:svg xmlns:é="http://www.w3.org/2000/svg"><é:metadata>Baker</é:metadata></é:svg>',
+      'a <metadata> element',
+    ],
     ['a sodipodi: name', '<svg><sodipodi:namedview id="base" /></svg>', 'a name in the sodipodi namespace'],
     ['an inkscape: attribute', '<svg><g inkscape:label="Layer 1" /></svg>', 'a name in the inkscape namespace'],
     [

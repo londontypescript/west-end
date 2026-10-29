@@ -23,7 +23,8 @@ export function rasterMetadata(bytes: Uint8Array): string[] {
 export function svgMetadata(svg: string): string[] {
   const found: string[] = [];
   if (svg.includes('<!--')) found.push('an XML comment');
-  if (/<(?:[\w.-]+:)?metadata[\s/>]/i.test(svg)) found.push('a <metadata> element');
+  // Any prefix: an XML name may hold letters beyond ASCII.
+  if (/<(?:[^\s<>/:!?]+:)?metadata[\s/>]/i.test(svg)) found.push('a <metadata> element');
   for (const editor of ['sodipodi', 'inkscape']) {
     if (new RegExp(`(?:\\b${editor}:[\\w.-]|xmlns:${editor}\\b)`, 'i').test(svg))
       found.push(`a name in the ${editor} namespace`);
@@ -60,7 +61,15 @@ function jpegMetadata(bytes: Uint8Array): string[] {
     while (bytes[offset + 1] === 0xff) offset += 1;
     const marker = bytes[offset + 1];
     if (marker === undefined) return [...found, 'a truncated JPEG segment'];
-    if (marker === 0xd9 || marker === 0xda) break;
+    if (marker === 0xd9) break;
+    // The scan header has a length like any segment; past it lies image
+    // data, where FF bytes aren't markers, so the walk stops there.
+    if (marker === 0xda) {
+      if (offset + 4 > bytes.length) return [...found, 'a truncated JPEG segment'];
+      const header = view.getUint16(offset + 2);
+      if (header < 2 || offset + 2 + header > bytes.length) return [...found, 'a truncated JPEG segment'];
+      break;
+    }
     if (marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) {
       offset += 2;
       continue;

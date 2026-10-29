@@ -35,10 +35,19 @@ export function gitHistorySource(root: string): HistorySource {
 
 // The repository is the one at `root`, even when this runs inside a git
 // hook, which sets variables pointing git at the repository it fired in.
+// Settings passed down through the environment (`git -c` in a parent, or
+// GIT_CONFIG_COUNT) are dropped too, so they can't override the test
+// repositories' own signing and hooks settings.
 export function gitEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
-  for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_COMMON_DIR']) {
-    delete env[name];
+  for (const name of Object.keys(env)) {
+    const pointsAtRepo = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY', 'GIT_COMMON_DIR'];
+    if (
+      pointsAtRepo.includes(name) ||
+      name === 'GIT_CONFIG_PARAMETERS' ||
+      /^GIT_CONFIG_(COUNT|KEY_\d+|VALUE_\d+)$/.test(name)
+    )
+      delete env[name];
   }
   return env;
 }

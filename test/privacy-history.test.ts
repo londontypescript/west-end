@@ -60,6 +60,20 @@ describe('the commits being pushed', () => {
     expect(reads).toEqual([['x', 'y']]);
   });
 
+  it('checks the same bytes again under a new path, still reading them once', () => {
+    const { source, reads } = fakeHistory(
+      {
+        c1: { 'notes.txt': 'x' },
+        c2: { 'notes.txt': 'x', 'characters/hero.character.ts': 'x' },
+      },
+      { x: encode('export default {}') },
+    );
+    expect(checkHistory(source).map(({ path, rule }) => ({ path, rule }))).toEqual([
+      { path: 'characters/hero.character.ts', rule: 'character-unlisted' },
+    ]);
+    expect(reads).toEqual([['x']]);
+  });
+
   it("takes the listing from HEAD's PROVENANCE.md", () => {
     const commits = { c1: { 'art/listed.png': 'p1' } };
     const blobs = { p1: Uint8Array.from(PNG) };
