@@ -69,8 +69,6 @@ apt-get upgrade
 
 packages="
   ca-certificates
-  chromium
-  chromium-sandbox
   curl
   ffmpeg
   fonts-dejavu-core
@@ -104,12 +102,6 @@ local_packages=$(apt list --installed 2>/dev/null | grep -F ',local]' || true)
 upgradable=$(apt list --upgradable 2>/dev/null | grep -v '^Listing' || true)
 [ -z "$upgradable" ] ||
   fail "installed packages older than the snapshot: $upgradable"
-
-# chromium-sandbox's helper only works setuid root; make sure the package
-# manager's permissions survived.
-sandbox=/usr/lib/chromium/chrome-sandbox
-[ "$(stat -c '%U %a' "$sandbox")" = "root 4755" ] ||
-  fail "$sandbox is not setuid root: $(stat -c '%U %a' "$sandbox")"
 
 mkdir -p /opt/west-end
 dpkg-query -W -f '${Package}\t${Version}\t${Architecture}\n' |
