@@ -1,4 +1,5 @@
 import { classify, extensionOf } from './privacy-formats.ts';
+import { rasterMetadata, svgMetadata } from './privacy-metadata.ts';
 import { svgRasterReferences, svgText } from './privacy-svg.ts';
 
 // The asset scanner. The repo accepts original vector artwork, and raster
@@ -12,9 +13,9 @@ export interface FileEntry {
   readonly bytes: Uint8Array;
 }
 
-type Rule = 'audio-or-video' | 'raster-image' | 'svg-raster';
+type Rule = 'audio-or-video' | 'raster-image' | 'svg-raster' | 'image-metadata' | 'character-unlisted';
 
-interface Problem {
+export interface Problem {
   readonly path: string;
   readonly rule: Rule;
   readonly detail: string;
@@ -39,13 +40,14 @@ export function checkRepo(source: RepoSource): Problem[] {
     if (bytes !== undefined) entries.push({ path, bytes });
   }
   const provenance = entries.find((entry) => entry.path === 'PROVENANCE.md');
-  const listed = provenance === undefined ? [] : provenanceAssetPaths(new TextDecoder().decode(provenance.bytes));
-  return scan(entries, listed);
+  return scan(entries, provenanceAssetPaths(provenance?.bytes));
 }
 
 // The Path column of every Markdown table in PROVENANCE.md. A listed folder
 // covers every file under it.
-function provenanceAssetPaths(markdown: string): string[] {
+function provenanceAssetPaths(provenance: Uint8Array | undefined): string[] {
+  if (provenance === undefined) return [];
+  const markdown = new TextDecoder().decode(provenance);
   const paths: string[] = [];
   let pathColumn = -1;
   let inTable = false;
@@ -106,6 +108,19 @@ function scanFile(entry: FileEntry, provenancePaths: readonly string[]): Problem
     for (const target of embedded) {
       problems.push({ path, rule: 'svg-raster', detail: `embeds a raster image (${target})` });
     }
+    for (const found of svg === undefined ? [] : svgMetadata(svg)) {
+      problems.push({ path, rule: 'image-metadata', detail: `carries metadata (${found}); strip it` });
+    }
+  }
+
+  for (const found of rasterMetadata(bytes)) {
+    problems.push({ path, rule: 'image-metadata', detail: `carries metadata (${found}); strip it` });
+  }
+
+  // A character file draws a character, so it is artwork like any other
+  // asset and needs its PROVENANCE.md entry.
+  if (path.toLowerCase().endsWith('.character.ts') && !listed) {
+    problems.push({ path, rule: 'character-unlisted', detail: 'is a character file not listed in PROVENANCE.md' });
   }
 
   return problems;

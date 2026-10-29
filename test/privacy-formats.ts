@@ -85,7 +85,7 @@ export function extensionOf(path: string): string {
   return dot <= 0 ? '' : name.slice(dot + 1).toLowerCase();
 }
 
-function ascii(bytes: Uint8Array, start: number, length: number): string {
+export function ascii(bytes: Uint8Array, start: number, length: number): string {
   if (bytes.length < start + length) return '';
   return String.fromCharCode(...bytes.subarray(start, start + length));
 }
