@@ -5,8 +5,9 @@
 #
 # Every pin is read from pins.env, checked for shape, and passed as an
 # explicit --build-arg; a missing, unknown, repeated or malformed pin stops
-# the build before anything is fetched. Only --no-cache may be added, so a
-# caller can't override a pin from the command line.
+# the build before anything is fetched, as does a URL pin whose host isn't
+# in download-hosts.txt. Only --no-cache may be added, so a caller can't
+# override a pin from the command line.
 set -eu
 
 fail() {
@@ -36,6 +37,8 @@ esac
 here=$(cd "$(dirname "$0")" && pwd)
 pins="$here/pins.env"
 [ -f "$pins" ] || fail "$pins not found"
+hosts="$here/download-hosts.txt"
+[ -f "$hosts" ] || fail "$hosts not found"
 
 # Every pin, separated by single spaces (the backslashes join the lines).
 # Globbing is off for the rest of the script, so the constant list can be
@@ -54,6 +57,17 @@ hex() {
 matches() {
   printf '%s' "$1" | grep -E -q "$2"
 }
+
+# The allowed download hosts, each followed by a space, so a host is
+# matched whole and never as part of a longer name.
+allowed=" "
+while IFS= read -r host || [ -n "$host" ]; do
+  case $host in
+    '' | '#'*) continue ;;
+  esac
+  matches "$host" '^[a-z0-9.-]+$' || fail "download-hosts.txt has a malformed host '$host'"
+  allowed="$allowed$host "
+done < "$hosts"
 
 valid() {
   key=$1
@@ -93,6 +107,18 @@ while IFS= read -r line || [ -n "$line" ]; do
     *" $key "*) fail "pins.env line $line_number: $key is set twice" ;;
   esac
   valid "$key" "$value" || fail "pins.env line $line_number: $key has a malformed value"
+  case $key in
+    *_URL)
+      # valid() has already pinned the scheme and ruled out a user or
+      # port, so the host is everything up to the first slash.
+      host=${value#https://}
+      host=${host%%/*}
+      case $allowed in
+        *" $host "*) ;;
+        *) fail "pins.env line $line_number: $key downloads from $host, which is not in download-hosts.txt" ;;
+      esac
+      ;;
+  esac
   seen="$seen$key "
   eval "pin_$key=\$value"
   set -- "$@" --build-arg "$key=$value"

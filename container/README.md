@@ -19,6 +19,11 @@ own `--build-arg` with `--platform linux/arm64`. `--no-cache` is the only
 option it accepts. The [`Containerfile`](Containerfile) gives no argument a
 default, so building it directly fails.
 
+A `*_URL` pin may only download from a host listed in
+[`download-hosts.txt`](download-hosts.txt), which `build.sh` and the gate
+test both read. Adding a host is a reviewed change: its own line in that
+file, in the same pull request as the pin that needs it.
+
 The build stops if: the architecture isn't arm64; a snapshot `InRelease`
 differs from its pinned hash; apt has an index from anywhere but the two
 snapshot URLs; an installed package is one the snapshot doesn't serve or is
