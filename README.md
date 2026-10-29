@@ -1,6 +1,6 @@
 # west-end
 
-London TypeScript's animation studio: characters drawn as SVG, rigged, animated and rendered in [Godot](https://godotengine.org), and published as videos, posters, stills and presentations.
+London TypeScript's animation studio: characters written as typed data files, rigged, animated and rendered in [Godot](https://godotengine.org), and published as videos, posters, stills and presentations.
 
 > **Pre-release.** Nothing to use yet. The plan and progress are in [issues](https://github.com/londontypescript/west-end/issues) and [milestones](https://github.com/londontypescript/west-end/milestones).
 
