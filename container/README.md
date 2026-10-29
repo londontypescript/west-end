@@ -1,9 +1,9 @@
 # Container image
 
-One Linux arm64 image that every Godot and Chromium step runs in, built from
-the same pinned inputs under Apple `container` locally and Docker in CI. Why
-it is shaped this way is in
-[ADR 0010](../docs/adr/0010-container-runner.md).
+One Linux arm64 image that every Godot step runs in, built from the same
+pinned inputs under Apple `container` locally and Docker in CI. Why it is
+shaped this way is in [ADR 0010](../docs/adr/0010-container-runner.md), as
+amended by [ADR 0011](../docs/adr/0011-characters-as-data.md).
 
 ## Building
 
@@ -22,10 +22,10 @@ default, so building it directly fails.
 The build stops if: the architecture isn't arm64; a snapshot `InRelease`
 differs from its pinned hash; apt has an index from anywhere but the two
 snapshot URLs; an installed package is one the snapshot doesn't serve or is
-older than the snapshot's; `chrome-sandbox` isn't setuid root; the Godot
-ZIP, the Godot binary, the Node tarball or the gdUnit4 archive doesn't
-match its hash; the gdUnit4 archive wasn't made from the pinned commit; or
-pip meets a file without a listed hash or a source build.
+older than the snapshot's; the Godot ZIP, the Godot binary, the Node
+tarball or the gdUnit4 archive doesn't match its hash; the gdUnit4 archive
+wasn't made from the pinned commit; or pip meets a file without a listed
+hash or a source build.
 
 Built and checked with Apple `container` 1.5.0 on an arm64 Mac. Docker build
 parity is checked in CI (phase I).
@@ -44,18 +44,18 @@ parity is checked in CI (phase I).
 | `/usr/local/bin/west-end-entry` | the entry command, [`entry.sh`](entry.sh)         |
 
 Debian packages: xvfb, Mesa (llvmpipe), the X libraries Godot needs,
-ffmpeg, Chromium with its setuid sandbox helper, Python for gdtoolkit, and
-fonts. `LIBGL_ALWAYS_SOFTWARE=1` and `GALLIUM_DRIVER=llvmpipe` are set.
+ffmpeg, Python for gdtoolkit, and fonts. `LIBGL_ALWAYS_SOFTWARE=1` and
+`GALLIUM_DRIVER=llvmpipe` are set.
 
 ## Running a step
 
-One container per step, as UID 10001, under the render/check or the convert
-policy in ADR 0010. With Apple `container`:
+One container per step, as UID 10001, under ADR 0010's render/check policy.
+With Apple `container`:
 
 ```sh
 job=$(mktemp -d) && chmod 0777 "$job"   # UID 10001 has no host account
 container run --rm --name <job> --network none \
-  --read-only --tmpfs /tmp --shm-size 1G \
+  --read-only --tmpfs /tmp \
   --cpus 4 --memory 4G --ulimit nproc=2048 --user 10001:10001 \
   --mount type=bind,source=<folder>,target=<path>,readonly \
   --volume "$job:/out" \
@@ -76,20 +76,16 @@ it back before reading the output.
 - Time limits aren't optional: Godot that can't start its renderer opens an
   alert under Xvfb and waits for a click forever.
 - Never mount the host's home, credentials, SSH agent or `node_modules`.
-- Debian's Chromium wrapper adds `--disable-dev-shm-usage` when `/dev/shm`
-  is under 3.8 GB, so Chromium keeps that memory in `/tmp` instead. That
-  changes where shared memory lives, not the sandbox.
 - Apple `container` 1.5.0 has no PID limit; `--ulimit nproc` bounds the
   step's user only.
 
 ## Refreshing the pins
 
-A frozen snapshot also freezes Chromium's security fixes, so refresh at
-least once a milestone. The base digest, the snapshot timestamps and
-Chromium move together: take a new base digest, then timestamps no older
-than the base's archive date, then their `InRelease` hashes. Change each
-pin's one line in `pins.env` (wheels in `requirements.txt`), checked
-against its source below, then rebuild with `--no-cache`.
+A frozen snapshot also freezes security fixes, so refresh at least once a
+milestone. The base digest and the snapshot timestamps move together: take
+a new base digest, then timestamps no older than the base's archive date,
+then their `InRelease` hashes. Change each pin's one line in `pins.env`
+(wheels in `requirements.txt`), checked against its source below, then rebuild with `--no-cache`.
 
 ## Pins and their sources
 
@@ -108,8 +104,8 @@ Looked up on 27 October 2026.
   keyring.
 - **`INRELEASE_*_SHA256`**: each suite's `InRelease` at those timestamps,
   checked by the build against what apt fetched. Bookworm is oldstable
-  (12.15) there. Notable versions: `chromium` `156.0.8078.47-1~deb12u1`,
-  `ffmpeg` `7:5.1.9-0+deb12u1`, `libgl1-mesa-dri` `22.3.6-1+deb12u2`.
+  (12.15) there. Notable versions: `ffmpeg` `7:5.1.9-0+deb12u1`,
+  `libgl1-mesa-dri` `22.3.6-1+deb12u2`.
 - **`GODOT_*`**: the `Godot_v4.7.2-stable_linux.arm64.zip` asset of the
   [4.7.2-stable release](https://github.com/godotengine/godot/releases/tag/4.7.2-stable).
   `GODOT_ZIP_SHA512` is its line in the release's `SHA512-SUMS.txt`, which

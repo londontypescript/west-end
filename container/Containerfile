@@ -1,4 +1,4 @@
-# The image every Godot and Chromium step runs in. Build it with
+# The image every Godot step runs in. Build it with
 # container/build.sh, which passes every pin from pins.env: no argument here
 # has a default, so a build that skips the wrapper fails instead of guessing.
 # Plain Dockerfile instructions only, so Apple container and Docker build it
