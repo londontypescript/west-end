@@ -45,7 +45,7 @@ export function checkRepo(source: RepoSource): Problem[] {
 
 // The Path column of every Markdown table in PROVENANCE.md. A listed folder
 // covers every file under it.
-function provenanceAssetPaths(provenance: Uint8Array | undefined): string[] {
+export function provenanceAssetPaths(provenance: Uint8Array | undefined): string[] {
   if (provenance === undefined) return [];
   const markdown = new TextDecoder().decode(provenance);
   const paths: string[] = [];
