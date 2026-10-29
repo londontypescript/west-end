@@ -1,7 +1,7 @@
 # ADR 0011: Characters are data files, with our own SVG writer and Godot builder
 
-Date: 2026-10-28. Status: accepted. Supersedes ADR 0001 and ADR 0005, and
-parts of ADR 0006 and ADR 0010 (see the end).
+Date: 2026-10-28. Status: accepted, amended by ADR 0012. Supersedes ADR
+0001 and ADR 0005, and parts of ADR 0006 and ADR 0010 (see the end).
 
 ## Context
 
